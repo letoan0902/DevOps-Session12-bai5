@@ -1,0 +1,93 @@
+Nhật ký tái hiện cục bộ bằng Docker - Bài 5, Session 12
+Môi trường: Docker Desktop 29.7.2 trên Windows 11, image gradle:8.10-jdk21
+Ngày chạy: 2026-10-13
+Ghi chú: output dưới đây là output thật của các lệnh, chỉ lược bỏ phần tải phân phối Gradle.
+
+==============================================================
+1. Lỗi 1: Permission denied khi chạy ./gradlew (không có bit thực thi)
+==============================================================
+Ghi chú về cách mô phỏng: thư mục bind-mount từ Windows luôn hiển thị file là 755 trong container,
+nên ./gradlew chạy được và không tái hiện được lỗi. Để mô phỏng đúng thứ Git checkout trên runner
+Linux (file được commit từ Windows có mode 100644), lệnh dưới sao chép dự án vào thư mục trong
+container rồi đặt chmod 644 cho gradlew.
+
+$ docker run --rm -v "$PWD:/src:ro" gradle:8.10-jdk21 sh -c "mkdir /work && cp -r /src/. /work/ \
+    && cd /work && chmod 644 gradlew && ls -l gradlew && ./gradlew --version; echo exit_code=\$?"
+-rw-r--r-- 1 root root 8762 Oct 12 20:02 gradlew
+sh: 1: ./gradlew: Permission denied
+exit_code=126
+
+Giải thích: mã thoát 126 là "command found but not executable". Trên GitHub Actions bước này in
+"##[error]Process completed with exit code 126." sau dòng "Permission denied".
+
+==============================================================
+2. Lỗi 1 đã sửa: chmod +x gradlew rồi ./gradlew test
+==============================================================
+$ docker run --rm -v "$PWD:/src:ro" gradle:8.10-jdk21 sh -c "mkdir /work && cp -r /src/. /work/ \
+    && cd /work && chmod 644 gradlew && chmod +x gradlew && ls -l gradlew \
+    && ./gradlew test --no-daemon; echo exit_code=\$?"
+-rwxr-xr-x 1 root root 8762 Oct 12 20:02 gradlew
+(lược bỏ phần thông báo Welcome to Gradle và release notes)
+> Task :compileJava
+> Task :processResources
+> Task :classes
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :test
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+For more on this, please refer to https://docs.gradle.org/8.10/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+BUILD SUCCESSFUL in 1m 4s
+4 actionable tasks: 4 executed
+exit_code=0
+
+==============================================================
+3. Lỗi 3: build Docker Image với context và file không tồn tại
+==============================================================
+Trường hợp A: context ./app (thư mục không tồn tại), đúng như workflow hỏng.
+$ docker buildx build -f ./docker/Dockerfile ./app
+ERROR: failed to build: unable to prepare context: path "./app" not found
+exit_code=1
+
+$ docker build -f ./docker/Dockerfile ./app
+ERROR: failed to build: unable to prepare context: path "./app" not found
+exit_code=1
+
+Trường hợp B: context là gốc repo nhưng file trỏ tới ./docker/Dockerfile (không tồn tại).
+$ docker buildx build -f ./docker/Dockerfile .
+ERROR: failed to build: resolve : GetFileAttributesEx docker: The system cannot find the file specified.
+
+Ghi chú: lỗi ở trường hợp B do Docker client trên Windows in ra (GetFileAttributesEx là API của Windows).
+Trên runner Linux của GitHub Actions, thông điệp dự kiến có dạng "failed to read dockerfile: open
+docker/Dockerfile: no such file or directory"; log thật sẽ do người điều phối bổ sung trong
+troubleshooting.md.
+
+==============================================================
+4. Lỗi 3 đã sửa: context . và file ./Dockerfile
+==============================================================
+$ docker build -t devops-session12-bai5:local-check -f ./Dockerfile .
+#14 DONE 0.1s
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 0.9s done
+#15 exporting manifest sha256:c4600269581339784793d7073ebe0e7c2b8948b2ea4ff3f17e9c1ee7a12dbb52 0.0s done
+#15 exporting config sha256:40969e349b83ea76a13e69c0e106373f5299ec8e1aff864016160ec2632b7824 0.0s done
+#15 exporting attestation manifest sha256:30e605235b1607dadb054e1a4a4bb897bd7a399d2cb9617ddf8cc2bc3e90cf8b 0.0s done
+#15 exporting manifest list sha256:ce84731371532737fb55a05ce90bf35b8f994d230ee456feddac6f4cb8eb4cbf 0.0s done
+#15 naming to docker.io/library/devops-session12-bai5:local-check done
+#15 unpacking to docker.io/library/devops-session12-bai5:local-check
+#15 unpacking to docker.io/library/devops-session12-bai5:local-check 0.2s done
+#15 DONE 1.2s
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/i5esk2iwhzmbziqmphmlq6nvu
+exit_code=0
+
+(Image local-check đã được xóa sau khi kiểm chứng; thư mục build/ và .gradle/ cũng đã được xóa.)
+
+==============================================================
+5. Lỗi 2: chỉ phân tích, không tái hiện cục bộ
+==============================================================
+Secret REGISTRY_TOKKEN không tồn tại nên ${{ secrets.REGISTRY_TOKKEN }} trở thành chuỗi rỗng,
+docker/login-action nhận password rỗng và dừng với: Error: Password required.
+Log thật sẽ được người điều phối ghi vào troubleshooting.md sau khi push.

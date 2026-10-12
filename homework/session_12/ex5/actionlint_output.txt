@@ -1,0 +1,19 @@
+Kết quả actionlint (rhysd/actionlint:latest, chạy bằng Docker)
+Lệnh: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -no-color <file>
+
+$ actionlint broken-pipeline.before.yml (ban hong)
+exit_code=0
+
+$ actionlint broken-pipeline.yml (ban da sua)
+exit_code=0
+
+Nhận xét:
+- actionlint không báo lỗi nào cho bản hỏng. Cả 3 lỗi đều là lỗi thời gian chạy hoặc lỗi logic
+  của dự án, không phải lỗi cú pháp hay lỗi schema của workflow:
+  1. Thiếu quyền thực thi của gradlew phụ thuộc vào mode file trong Git, không nằm trong YAML.
+  2. Tên secret sai chính tả vẫn là biểu thức hợp lệ (${{ secrets.<tên bất kỳ> }}); GitHub chỉ
+     thay bằng chuỗi rỗng khi chạy, actionlint không biết repo có những secret nào.
+  3. Đường dẫn context và file chỉ được kiểm tra khi docker build chạy, actionlint không kiểm tra
+     sự tồn tại của thư mục.
+- Vì vậy linter chỉ bảo vệ ở mức cú pháp; việc phát hiện 3 lỗi này cần log thật của Actions
+  hoặc tái hiện cục bộ.
