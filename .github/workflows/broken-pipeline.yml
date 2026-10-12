@@ -24,6 +24,8 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Cấp quyền thực thi cho Gradle Wrapper
+        run: chmod +x gradlew
       - name: Chạy test bằng Gradle Wrapper
         run: ./gradlew test --no-daemon
 
