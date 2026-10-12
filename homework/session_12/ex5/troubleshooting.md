@@ -88,7 +88,15 @@ Run ./gradlew test --no-daemon
 Log thật từ GitHub Actions:
 
 ```text
-(log thật từ GitHub Actions: người điều phối cập nhật)
+Log thật từ GitHub Actions (run 38302240778, commit "ci: pipeline ban đầu", job `test`, bước `Chạy test bằng Gradle Wrapper`):
+
+```text
+##[group]Run ./gradlew test --no-daemon
+/home/runner/work/_temp/6251fc1f-bc45-4b89-ad55-eee7654234a0.sh: line 1: ./gradlew: Permission denied
+##[error]Process completed with exit code 126.
+```
+
+Trạng thái job: `test: failure` sau 7 giây, `docker-build: skipped` (vì `needs: test`). Mã thoát 126 của shell nghĩa là tệp tồn tại nhưng không thể thực thi. Kiểm tra mode trong Git xác nhận nguyên nhân: `git ls-files --stage gradlew` cho `100644`.
 ```
 
 ### 4.2 Nguyên nhân gốc
@@ -165,7 +173,15 @@ Error: Password required
 Log thật từ GitHub Actions:
 
 ```text
-(log thật từ GitHub Actions: người điều phối cập nhật)
+Log thật từ GitHub Actions (run 38302329815, commit "fix(ci): lỗi 1", job `docker-build`, bước `Đăng nhập GitHub Container Registry`):
+
+```text
+##[group]Run docker/login-action@v3
+  username: letoan0902
+##[error]Password required
+```
+
+Trạng thái job: `test: success` (39 giây, sau khi đã thêm `chmod +x gradlew`), `docker-build: failure` sau 12 giây, bước `Build và đẩy Docker image` bị bỏ qua. Dòng `username` có giá trị nhưng không có dòng `password`, vì biểu thức `${{ secrets.REGISTRY_TOKKEN }}` tham chiếu một secret không tồn tại nên nhận chuỗi rỗng. Lưu ý: nếu secret đúng tên `REGISTRY_TOKEN` cũng chưa được tạo trong repo thì thông báo lỗi giống hệt; vì vậy sau khi sửa chính tả còn phải kiểm tra `gh secret list` (xem mục 5.4).
 ```
 
 Dấu hiệu nhận biết: ở phần `with:` của log, trường `password:` để trống. Với secret hợp lệ, GitHub in
@@ -239,7 +255,7 @@ Error: buildx failed with: ERROR: failed to build: unable to prepare context: pa
 Log thật từ GitHub Actions:
 
 ```text
-(log thật từ GitHub Actions: người điều phối cập nhật)
+Log thật từ GitHub Actions: ở run 38302502567 (bản đã sửa đủ 3 lỗi) job `docker-build` vẫn dừng ở bước đăng nhập vì repository chưa có secret `REGISTRY_TOKEN` (do học viên tự tạo), nên bước `docker/build-push-action@v5` chưa được chạy trên runner và lỗi 3 không xuất hiện trong log GitHub. Lỗi 3 được tái hiện và xác nhận bằng Docker cục bộ ở mục 7 (thông điệp `unable to prepare context: path "./app" not found`). Sau khi học viên thêm secret và Re-run jobs, bước build sẽ dùng `context: .` và `file: ./Dockerfile` đã sửa.
 ```
 
 Tuỳ phiên bản buildx, cùng nguyên nhân có thể hiện dưới dạng `failed to read dockerfile: open
@@ -374,15 +390,42 @@ Bài học: linter chỉ đảm bảo cú pháp và schema; muốn bắt 3 lỗi
 
 ## 9. Kết quả trên GitHub Actions
 
-(người điều phối cập nhật sau khi push)
+Repo: https://github.com/letoan0902/DevOps-Session12-bai5 (tab Actions: https://github.com/letoan0902/DevOps-Session12-bai5/actions). Pipeline được sửa theo ba commit để log của từng lỗi lộ ra lần lượt (do `needs: test`, lỗi 2 chỉ xuất hiện sau khi sửa lỗi 1):
 
-Gợi ý nội dung cần điền:
+| Commit | Nội dung | Run | Job test | Job docker-build | Lỗi lộ ra |
+|---|---|---|---|---|---|
+| 1 | Pipeline ban đầu (3 lỗi) | 38302240778 | failure (7s) | skipped | Lỗi 1: `./gradlew: Permission denied`, exit code 126 |
+| 2 | Sửa lỗi 1 (`chmod +x gradlew`) | 38302329815 | success (39s) | failure (12s) | Lỗi 2: `Password required` ở bước đăng nhập |
+| 3 | Sửa lỗi 2 và 3 (`REGISTRY_TOKEN`, `context: .`, `file: ./Dockerfile`) | 38302502567 | success (37s) | failure ở bước đăng nhập | Chưa có secret `REGISTRY_TOKEN` trong repo |
 
-- Run của commit hỏng: link run, job `test` đỏ ở bước chạy `./gradlew`, job `docker-build` bị skipped.
-- Các run trung gian (nếu sửa từng lỗi một): link run và dòng `##[error]` tương ứng.
-- Run cuối của commit sửa: link run, hai job `test` và `docker-build` đều xanh, tag `sha-xxxxxxx` và `latest`
-  xuất hiện ở Packages của repo.
-- Ảnh chụp tích xanh: đặt trong thư mục này (ví dụ `green-run.png`).
+Kết quả run cuối (38302502567):
+
+```text
+$ gh run view 38302502567 --repo letoan0902/DevOps-Session12-bai5
+X main Broken Pipeline - CI/CD . 38302502567
+JOBS
+V test in 37s (ID 114988569851)
+X docker-build in 18s (ID 114988799132)
+  V Checkout mã nguồn
+  V Cài đặt Docker Buildx
+  X Đăng nhập GitHub Container Registry
+  - Sinh metadata và tag cho image
+  - Build và đẩy Docker image
+
+$ gh api repos/letoan0902/DevOps-Session12-bai5/actions/runs/38302502567/jobs -q '.jobs[] | "\(.name): \(.status)/\(.conclusion)"'
+test: completed/success
+docker-build: completed/failure
+```
+
+Trích log job `test` của run cuối:
+
+```text
+##[group]Run chmod +x gradlew
+> Task :test
+BUILD SUCCESSFUL in 32s
+```
+
+Đọc kết quả: lỗi 1 đã hết (job `test` xanh, Gradle Wrapper chạy được và test pass), workflow đã dùng đúng tên secret và đúng build context. Bước còn đỏ là đăng nhập GHCR, nguyên nhân không nằm trong tệp workflow mà do repository chưa có secret `REGISTRY_TOKEN`. Để pipeline tích xanh hoàn toàn, học viên tạo PAT classic có `write:packages`, chạy `gh secret set REGISTRY_TOKEN --repo letoan0902/DevOps-Session12-bai5`, rồi Re-run jobs trên run 38302502567 và chụp ảnh kết quả tích xanh làm ảnh nộp bài.
 
 ## 10. Bảng tổng hợp 3 lỗi
 

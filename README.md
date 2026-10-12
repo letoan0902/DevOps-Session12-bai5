@@ -24,4 +24,4 @@ bị 3 lỗi (Permission Denied, Authentication Failed, Build Context Error) và
 Tạo secret `REGISTRY_TOKEN` (Personal access token classic, quyền `write:packages`) trong Settings -> Secrets and
 variables -> Actions của repo, nếu không bước đăng nhập GHCR sẽ lỗi.
 
-Trạng thái CI: (cập nhật sau khi push)
+Trạng thái CI: 3 run trên `main` lần lượt lộ và sửa từng lỗi. Run 38302240778 (bản hỏng): test đỏ `./gradlew: Permission denied`. Run 38302329815 (sửa lỗi 1): test xanh, đăng nhập registry đỏ `Password required`. Run 38302502567 (sửa đủ 3 lỗi): test xanh, chỉ còn bước đăng nhập đỏ vì repo chưa có secret `REGISTRY_TOKEN`; sau khi học viên thêm secret và Re-run jobs, pipeline sẽ tích xanh. Chi tiết ở mục 9 của `homework/session_12/ex5/troubleshooting.md`. Actions: https://github.com/letoan0902/DevOps-Session12-bai5/actions
